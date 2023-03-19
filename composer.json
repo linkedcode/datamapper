@@ -1,0 +1,18 @@
+{
+    "name": "linkedcode/datamapper",
+    "description": "Proyecto de Data Mapper lo más simple posible",
+    "type": "library",
+    "license": "GPL v3",
+    "autoload": {
+        "psr-4": {
+            "Linkedcode\\DataMapper\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Nicolas H. Kosciuk",
+            "email": "nhk@linkedcode.com"
+        }
+    ],
+    "require": {}
+}
