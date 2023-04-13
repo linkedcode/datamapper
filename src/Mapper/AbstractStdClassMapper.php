@@ -4,12 +4,16 @@ namespace Linkedcode\DataMapper\Mapper;
 
 use Exception;
 use Linkedcode\DataMapper\Adapter\DatabaseAdapterInterface;
+use Linkedcode\DataMapper\Adapter\PdoAdapter;
 use stdClass;
 
 abstract class AbstractStdClassMapper
 {
+    /**
+     * @var PdoAdapter
+     */
     protected $adapter;
-    protected $entityTable;
+    protected $table;
     protected $fields = [];
     protected $relations = [];
 
@@ -21,7 +25,23 @@ abstract class AbstractStdClassMapper
     public function findById($id)
     {
         $this->adapter->select(
-            $this->entityTable,
+            $this->table,
+            array('id' => $id)
+        );
+
+        if (!$row = $this->adapter->fetch()) {
+            return null;
+        }
+
+        $row = $this->loadRelatedEntities(array($row));
+
+        return $row[0];
+    }
+
+    public function findRawById($id)
+    {
+        $this->adapter->select(
+            $this->table,
             array('id' => $id)
         );
 
@@ -32,10 +52,83 @@ abstract class AbstractStdClassMapper
         return $row;
     }
 
+    public function findByIds(array $ids)
+    {
+        $this->adapter->select($this->table, ['id' => $ids]);
+
+        $rows = $this->adapter->fetchAll();
+
+        if ($rows) {
+            $rows = $this->loadRelatedEntities($rows);
+        }
+
+        return $rows;
+    }
+
+    protected function getTable()
+    {
+        return $this->table;
+    }
+
+    protected function getEntities()
+    {
+        $entities = [];
+
+        foreach ($this->fields as $field) {
+            if ($field['type'] == 'entity') {
+                $entities[] = $field;
+            }
+        }
+
+        return $entities;
+    }
+
+    public function join(AbstractStdClassMapper $mapper)
+    {
+        $local = $this->getEntities();
+        $foreign = $mapper->getEntities();
+
+        if (count($foreign) === 0) {
+            $entity = $this->getEntity($mapper);
+            foreach ($local as $_local) {
+                if ($_local['entity'] == $entity) {
+                    $on = sprintf("%s.id = %s.%s",
+                        $mapper->getTable(),
+                        $this->getTable(),
+                        $_local['field']
+                    );
+                    $this->adapter->join($mapper->getTable(), $on);
+                }
+            }
+        } else if (count($local) === 0) {
+            $entity = $this->getEntity($this);
+            foreach ($foreign as $_foreign) {
+                if ($_foreign['entity'] == $entity) {
+                    $on = sprintf("%s.%s = %s.id",
+                        $mapper->getTable(),
+                        $_foreign['field'],
+                        $this->getTable()
+                    );
+                    $this->adapter->join($mapper->getTable(), $on);
+                }
+            }
+        } else {
+            foreach ($local as $_local) {
+                foreach ($foreign as $_foreign) {
+                    if ($_local['entity'] == $_foreign['entity']) {
+                        print_r($_local);
+                        die("join");
+                    }
+                }
+            }
+        }
+    }
+
     public function findAll(array $conditions = array())
     {
-        $this->adapter->select($this->entityTable, $conditions);
+        $this->adapter->select($this->table, $conditions);
         $rows = $this->adapter->fetchAll();
+        $this->adapter->reset();
         return $rows;
     }
 
@@ -44,7 +137,7 @@ abstract class AbstractStdClassMapper
         $obj = new stdClass;
 
         $obj->id = $this->adapter->insert(
-            $this->entityTable,
+            $this->table,
             $this->toRow($data)
         );
 
@@ -54,7 +147,7 @@ abstract class AbstractStdClassMapper
     public function update(array $data, array $conditions)
     {
         return $this->adapter->update(
-            $this->entityTable,
+            $this->table,
             $this->toRow($data),
             $conditions
         );
@@ -62,18 +155,20 @@ abstract class AbstractStdClassMapper
 
     protected function toRow($data)
     {
-        $newdata = [];
+        $new = [];
+        $fields = $this->fields;
 
         foreach ($data as $k => $v) {
-            foreach ($this->fields as $field) {
+            foreach ($fields as $f => $field) {
                 if ($field['field'] === $k) {
-                    $newdata[$k] = $v;
+                    $new[$k] = $v;
+                    unset($fields[$f]);
                     continue;
                 }
             }
         }
 
-        return $newdata;
+        return $new;
     }
 
     protected function loadRelatedEntities($rows)
@@ -91,14 +186,9 @@ abstract class AbstractStdClassMapper
             return $rows;
         }
 
-        $columnsToDelete = [];
         $columnsInModel = $this->getColumns();
-
-        foreach ($rows[0] as $prop => $value) {
-            if (!in_array($prop, $columnsInModel)) {
-                $columnsToDelete[] = $prop;
-            }
-        }
+        $columnsInTable = array_keys((array) $rows[0]);
+        $columnsToDelete = array_diff($columnsInTable, $columnsInModel);
 
         foreach ($rows as &$row) {
             foreach ($columnsToDelete as $col) {
@@ -109,6 +199,13 @@ abstract class AbstractStdClassMapper
         return $rows;
     }
 
+    protected function getEntity($mapper)
+    {
+        $className = explode('\\', get_class($mapper));
+        $entity = str_replace("Mapper", "", array_pop($className));
+        return $entity;
+    }
+
     protected function loadRelations($rows)
     {
         if (empty($this->relations)) {
@@ -116,28 +213,41 @@ abstract class AbstractStdClassMapper
         }
 
         foreach ($this->relations as $attribute => $relation) {
-            foreach ($rows as &$row) {
-                if ($relation['type'] == 'XX') {
-                    $field = $relation['localKey'];
-                    $attribute = $relation['field'];
-                    $this->{$relation['mapper']}->join(
-                        'INNER',
-                        $relation['joinTable'],
-                        $relation['localKey'],
-                        $relation['foreignKey']
-                    );
-                    $this->{$relation['mapper']}->addForeignKey($relation['localKey']);
-                    $row->$attribute = $this->{$relation['mapper']}->findAll(array(
-                        $field => $row->id
-                    ));
-                } else if ($relation['type'] == 'O2M' || $relation['type'] == '1X') {
-                    $field = $relation['foreignKey'];
-                    $row->$attribute = $this->{$relation['mapper']}->findAll(array(
-                        $field => $row->id
-                    ));
-                } else {
-                    throw new Exception("Falta programar relacion");
+            if ($relation['type'] == 'XX' || $relation['type'] == 'M2M') {
+                $ids = $this->getRelatedIds($rows, 'id');
+
+                $mapper = $relation['mapper'];
+                $items = $this->$mapper->findRelated($ids);
+                $main = $this->$mapper->getMainEntity();
+                $mainField = $main['field'];
+
+                foreach ($rows as &$row) {
+                    foreach ($items as $i => $item) {
+                        if ($item->$mainField == $row->id) {
+                            $row->$attribute[] = $item;
+                            unset($items[$i]);
+                        }
+                    }
                 }
+            } else if ($relation['type'] == 'O2M' || $relation['type'] == '1X') {
+                $mapper = $relation['mapper'];
+                $mainField = $this->getTable() . "_id";
+                $ids = $this->getRelatedIds($rows, 'id');
+                $relateds = $this->$mapper->findAll(array(
+                    $mainField => $ids
+                ));
+                foreach ($rows as &$row) {
+                    foreach ($relateds as $r => $related) {
+                        if ($row->id == $related->$mainField) {
+                            unset($related->$mainField);
+                            $row->$attribute[] = $related;
+                            unset($relateds[$r]);
+                            continue;
+                        }
+                    }
+                }
+            } else {
+                throw new Exception("Falta programar relacion");
             }
         }
 
@@ -147,7 +257,7 @@ abstract class AbstractStdClassMapper
     protected function loadInternalEntities($rows)
     {
         $related = [];
-        $columnsToRemove = [];
+        //$columnsToRemove = [];
 
         foreach ($this->fields as $prop => $field) {
             /*if (in_array($prop, $this->excludes)) {
@@ -174,11 +284,14 @@ abstract class AbstractStdClassMapper
                 foreach ($related as $prop => $values) {
                     $column = $this->getColumn($prop);
                     $id = $row->{$column};
-                    if (isset($values[$id])) {
-                        $row->{$prop} = $values[$id];
-                    } else {
-                        $row->{$prop} = null;
+                    $value = null;
+                    foreach ($values as $val) {
+                        if ($val->id == $id) {
+                            $value = $val;
+                            break;
+                        }
                     }
+                    $row->{$prop} = $value;
                     if ($column != $prop) {
                         unset($row->{$column});
                     }
@@ -186,13 +299,13 @@ abstract class AbstractStdClassMapper
             }
         }
 
-        if (count($columnsToRemove)) {
+        /*if (count($columnsToRemove)) {
             foreach ($rows as &$row) {
                 foreach ($columnsToRemove as $col) {
                     unset($row->$col);
                 }
             }
-        }
+        }*/
 
         return $rows;
     }
@@ -234,12 +347,6 @@ abstract class AbstractStdClassMapper
 
     protected function getColumns()
     {
-        $columnsInModel = [];
-
-        foreach ($this->fields as $field) {
-            $columnsInModel[] = $field['field'];
-        }
-
-        return $columnsInModel;
+        return array_column($this->fields, 'field');
     }
 }

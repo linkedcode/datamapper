@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping engine="MyISAM">
+
+<entity name="Listing" table="listing">
+	<relation name="tags" type="M2M" mapper="ListingTag" entity="Tag"></relation>
+	<attribute name="id" type="serial" />
+	<attribute name="title" type="string" size="64" />
+	<attribute name="address" type="entity" entity="Address" field="address_id" />
+	<relation name="models" type="O2M" entity="ListingModel"></relation>
+</entity>
+
+<entity name="Address" table="address">
+	<attribute name="id" type="serial" />
+	<attribute name="title" type="string" size="64" />
+	<attribute name="country" type="entity" entity="Country" />
+</entity>
+
+<entity name="Country" table="country">
+	<attribute name="id" type="serial" />
+	<attribute name="name" type="string" size="64" />
+</entity>
+
+<entity name="ListingModel" table="listing_model">
+	<attribute name="id" type="serial" />
+	<attribute name="name" type="string" size="64" />
+	<attribute name="color" type="string" size="16" />
+</entity>
+
+<entity name="Tag" table="tag">
+	<attribute name="id" type="serial" />
+	<attribute name="name" type="string" size="32" />
+</entity>
+
+<entity name="ListingTag" table="listing_tag">
+	<attribute name="listing" type="integer" field="listing_id" />
+	<attribute name="tag" type="entity" entity="Tag" field="tag_id" />
+</entity>
+
+</mapping>

@@ -1,0 +1,28 @@
+<project>
+	<schema>/home/www/linkedcode/datamapper/tests/schema.xml</schema>
+	<output>/home/www/linkedcode/datamapper/tests/Argo</output>
+	<namespace>App</namespace>
+	<config>
+		<mapper>
+			<classname>{$name}Base{$type}</classname>
+		</mapper>
+	</config>
+	<entity name="Listing">
+		<mapper>true</mapper>
+	</entity>
+	<entity name="ListingModel">
+		<mapper>true</mapper>
+	</entity>
+	<entity name="Address">
+		<mapper>true</mapper>
+	</entity>
+	<entity name="Country">
+		<mapper>true</mapper>
+	</entity>
+	<entity name="Tag">
+		<mapper>true</mapper>
+	</entity>
+	<entity name="ListingTag">
+		<mapper>true</mapper>
+	</entity>
+</project>

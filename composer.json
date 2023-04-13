@@ -5,7 +5,9 @@
     "license": "GPL v3",
     "autoload": {
         "psr-4": {
-            "Linkedcode\\DataMapper\\": "src/"
+            "Linkedcode\\DataMapper\\": "src/",
+            "Argo\\": "tests/Argo/",
+            "App\\": "tests/App/"
         }
     },
     "authors": [

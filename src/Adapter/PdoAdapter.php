@@ -15,7 +15,14 @@ class PdoAdapter implements DatabaseAdapterInterface
      */
     protected $connection;
     protected $statement;
-    protected $fetchMode = PDO::FETCH_ASSOC;   
+    protected $fetchMode = PDO::FETCH_OBJ;
+
+    protected $joins = array(
+        self::INNER_JOIN => []
+    );
+
+    public const INNER_JOIN = 'INNER JOIN';
+
     
     public function __construct(
         $dsn,
@@ -48,11 +55,20 @@ class PdoAdapter implements DatabaseAdapterInterface
                 $this->config["dsn"],
                 $this->config["username"],
                 $this->config["password"],
-                $this->config["driverOptions"]);
-            $this->connection->setAttribute(PDO::ATTR_ERRMODE,
-                PDO::ERRMODE_EXCEPTION);
+                $this->config["driverOptions"]
+            );
+            
             $this->connection->setAttribute(
-                PDO::ATTR_EMULATE_PREPARES, false); 
+                PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION
+            );
+            
+            $this->connection->setAttribute(
+                PDO::ATTR_EMULATE_PREPARES, false
+            );
+            
+            $this->connection->setAttribute(
+                PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_OBJ
+            );
         }
         catch (PDOException $e) {
             throw new RuntimeException($e->getMessage());
@@ -144,19 +160,49 @@ class PdoAdapter implements DatabaseAdapterInterface
             $where = array();
             foreach ($bind as $col => $value) {
                 unset($bind[$col]);
-                $bind[":" . $col] = $value;
-                $where[] = $col . " = :" . $col;
+                if (is_array($value)) {
+                    $b = array();
+                    foreach ($value as $vid => $val) {
+                        $bind[":" . $col.$vid] = $val;
+                        $b[] = ":" . $col . $vid;
+                    }
+                    $where[] = $col . " IN (" . implode(",", $b) . ")";
+                } else {
+                    $bind[":" . $col] = $value;
+                    $where[] = $col . " = :" . $col;
+                }
             }
         }
  
-        $sql = "SELECT * FROM " . $table
+        $joins = $this->generateJoins();
+
+        //{$table}.
+        $sql = "SELECT * FROM {$table} {$joins} "
             . (($bind) ? " WHERE "
             . implode(" " . $boolOperator . " ", $where) : " ");
+        error_log($sql);
         $this->prepare($sql)
             ->execute($bind);
         return $this;
     }
+
+    public function reset()
+    {
+        $this->joins = [];
+    }
     
+    protected function generateJoins()
+    {
+        $statements = [];
+        foreach ($this->joins as $type => $joins) {
+            foreach ($joins as $join) {
+                $statements[] = $type . " " . $join['table'] . " ON " . $join['on'];
+            }
+        }
+
+        return implode(" ", $statements);
+    }
+
     public function insert($table, array $bind)
     {
         $cols = implode(", ", array_keys($bind));
@@ -193,6 +239,14 @@ class PdoAdapter implements DatabaseAdapterInterface
     {
         $sql = "DELETE FROM " . $table . (($where) ? " WHERE " . $where : " ");
         return $this->prepare($sql)->execute()->countAffectedRows();
+    }
+
+    public function join($table, $on, $type = self::INNER_JOIN)
+    {
+        $this->joins[$type][] = array(
+            'table' => $table,
+            'on' => $on,
+        );
     }
 
     public function exec($sql)
