@@ -23,6 +23,11 @@ abstract class AbstractStdClassMapper
         $this->adapter = $adapter;
     }
 
+    public function getFields()
+    {
+        return $this->fields;
+    }
+
     public function findById($id)
     {
         $this->adapter->select(
