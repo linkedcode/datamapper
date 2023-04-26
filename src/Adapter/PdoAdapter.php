@@ -13,7 +13,7 @@ class PdoAdapter implements DatabaseAdapterInterface
     /**
      * @var PDO
      */
-    protected $connection;
+    protected $conn;
     protected $statement;
     protected $fetchMode = PDO::FETCH_OBJ;
 
@@ -46,27 +46,27 @@ class PdoAdapter implements DatabaseAdapterInterface
     public function connect()
     {
         // if there is a PDO object already, return early
-        if ($this->connection) {
+        if ($this->conn) {
             return;
         }
  
         try {
-            $this->connection = new PDO(
+            $this->conn = new PDO(
                 $this->config["dsn"],
                 $this->config["username"],
                 $this->config["password"],
                 $this->config["driverOptions"]
             );
             
-            $this->connection->setAttribute(
+            $this->conn->setAttribute(
                 PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION
             );
             
-            $this->connection->setAttribute(
+            $this->conn->setAttribute(
                 PDO::ATTR_EMULATE_PREPARES, false
             );
             
-            $this->connection->setAttribute(
+            $this->conn->setAttribute(
                 PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_OBJ
             );
         }
@@ -77,15 +77,15 @@ class PdoAdapter implements DatabaseAdapterInterface
     
     public function disconnect()
     {
-        $this->connection = null;
+        $this->conn = null;
     }
     
     public function prepare($sql, array $options = array())
     {
         $this->connect();
         try {
-            $this->statement = $this->connection->prepare($sql, 
-                $options);
+            error_log($sql);
+            $this->statement = $this->conn->prepare($sql, $options);
             return $this;
         }
         catch (PDOException $e) {
@@ -114,7 +114,7 @@ class PdoAdapter implements DatabaseAdapterInterface
 
     public function getLastInsertId($name = null) {
         $this->connect();
-        return $this->connection->lastInsertId($name);
+        return $this->conn->lastInsertId($name);
     }
     
     public function fetch(
@@ -180,7 +180,7 @@ class PdoAdapter implements DatabaseAdapterInterface
         $sql = "SELECT * FROM {$table} {$joins} "
             . (($bind) ? " WHERE "
             . implode(" " . $boolOperator . " ", $where) : " ");
-        error_log($sql);
+        
         $this->prepare($sql)
             ->execute($bind);
         return $this;
@@ -207,19 +207,21 @@ class PdoAdapter implements DatabaseAdapterInterface
     {
         $cols = implode(", ", array_keys($bind));
         $values = implode(", :", array_keys($bind));
+
         foreach ($bind as $col => $value) {
             unset($bind[$col]);
             $bind[":" . $col] = $value;
         }
  
         $sql = "INSERT INTO " . $table
-            . " (" . $cols . ")  VALUES (:" . $values . ")";
+            . " (" . $cols . ") VALUES (:" . $values . ")";
+
         return (int) $this->prepare($sql)
             ->execute($bind)
             ->getLastInsertId();
     }
     
-    public function update($table, array $bind, $where = "")
+    public function update($table, array $bind, array $where)
     {
         $set = array();
         foreach ($bind as $col => $value) {
@@ -228,13 +230,30 @@ class PdoAdapter implements DatabaseAdapterInterface
             $set[] = $col . " = :" . $col;
         }
  
-        $sql = "UPDATE " . $table . " SET " . implode(", ", $set)
-            . (($where) ? " WHERE " . $where : " ");
+        $sql = "UPDATE " . $table . " SET " . implode(", ", $set);
+        list($_where, $_binds) = $this->parseWhere($where);
+        $sql .= " WHERE " . implode(" AND ", $_where);
+
+        $bind = array_merge($bind, $_binds);
+
         return $this->prepare($sql)
             ->execute($bind)
             ->countAffectedRows();
     }
     
+    protected function parseWhere(array $where)
+    {
+        $stmt = [];
+        $bind = [];
+        foreach ($where as $col => $val) {
+            unset($bind[$col]);
+            $bind[":w" . $col] = $val;
+            $stmt[] = $col . " = :w" . $col;
+        }
+
+        return [$stmt, $bind];
+    }
+
     public function delete($table, $where = "")
     {
         $sql = "DELETE FROM " . $table . (($where) ? " WHERE " . $where : " ");
@@ -252,6 +271,6 @@ class PdoAdapter implements DatabaseAdapterInterface
     public function exec($sql)
     {
         $this->connect();
-        return $this->connection->exec($sql);
+        return $this->conn->exec($sql);
     }
 }

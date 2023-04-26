@@ -16,6 +16,7 @@ abstract class AbstractStdClassMapper
     protected $table;
     protected $fields = [];
     protected $relations = [];
+    protected $errors = [];
 
     public function __construct(DatabaseAdapterInterface $adapter)
     {
@@ -310,7 +311,75 @@ abstract class AbstractStdClassMapper
         return $rows;
     }
 
-    public function getColumn($attr)
+    public function getErrors()
+    {
+        return $this->errors;
+    }
+
+    public function validate($data)
+    {
+        $notFound = [];
+
+        $columns = $this->getColumns();
+
+        foreach ($data as $k => $v) {
+            if (!in_array($k, $columns)) {
+                $notFound[] = $k;
+                continue;
+            }
+
+            $this->validateField($k, $data[$k]);
+        }
+
+        return empty($this->errors);
+    }
+
+    protected function checkRequired($field, $value)
+    {
+        if (isset($field['required']) && $field['required'] === true) {
+            // ¿Que pasa con el 0?
+            if ($value === "") {
+                $this->errors[$field['name']]['required'] = false;
+            }
+        }
+    }
+
+    protected function checkEntities($field, $value)
+    {
+        if ($field['type'] === 'entity') {
+            $mapper = sprintf("%sMapper", lcfirst($field['entity']));
+            $related = $this->$mapper->findById($value);
+            if (!$related) {
+                $this->errors[$field['name']]['relatedEntity'] = false;
+            }
+        }
+    }
+
+    protected function validateField($fieldName, $value)
+    {
+        $field = $this->getAttribute($fieldName);
+        $field['name'] = $fieldName;
+
+        $this->checkRequired($field, $value);
+        $this->checkEntities($field, $value);
+    }
+
+    protected function getAttribute($attr)
+    {
+        if (isset($this->fields[$attr])) {
+            return $this->fields[$attr];
+        } else {
+            foreach ($this->fields as $field) {
+                if ($field['field'] == $attr) {
+                    return $field;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    protected function getColumn($attr)
     {
         if (isset($this->fields[$attr])) {
             if (isset($this->fields[$attr]['column'])) {

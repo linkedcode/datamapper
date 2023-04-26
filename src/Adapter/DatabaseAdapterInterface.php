@@ -20,6 +20,6 @@ interface DatabaseAdapterInterface
         $boolOperator = "AND"
     );
     public function insert($table, array $bind);
-    public function update($table, array $bind, $where = "");
+    public function update($table, array $bind, array $where);
     public function delete($table, $where = "");
 }
